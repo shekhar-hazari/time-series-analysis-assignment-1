@@ -1,0 +1,297 @@
+---
+title: "Time Series Analysis: Assignment 1"
+author: "Shekhar Hazari"
+output:
+  html_notebook:
+    toc: TRUE
+---
+
+# Introduction to the problem
+- We have been given a csv file containing yearly change in thickness of Ozone layer since 1927 to 2016.
+- As Task 1 of the assignment, we are required to find the best model among linear, quadratic, cyclical and seasonal trend model and predict yearly changes for the next 5 years from 2017 to 2021.
+- As Task 2 of the assigment, we are required to propose a set of possible ARIMA(p,d,q) models using all suitable model specification tools. The main motivation behind this task is to use all model specifications such as ACF-PACF, EACF, BIC and clearly explain the rationale behind the choices being made for model selection.
+
+# First look at the data
+- In the plot below, you can see the data. Data is yearly change in thickness of Ozone layer and therefore a negative value represents decrease in thickness of Ozone layer from previous year whereas a positive value represents increase in thickness of Ozone layer from previous year.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE,
+	paged.print = TRUE
+)
+```
+
+```{r read_data, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
+library(readr)
+library(TSA)
+library(tseries)
+# Reading data
+delta_ozone <- read_csv("data1.csv", col_names = FALSE)
+# Renaming column
+names(delta_ozone) <- c('delta')
+# Converting to time series
+ts_delta_ozone <- ts(delta_ozone, start = 1927, end = 2016)
+# Plotting the time series
+plot(ts_delta_ozone, type = 'o',
+     main ="Time series plot of change in thickness of Ozone layer",
+     ylab = "Change in thickness",
+     xlab = "Year",
+     col = c('navy'))
+```
+Figure 1: Time series plot of change in thickness of ozone layer.
+
+- Looking at the figure 1 we can tell that the mean is not constant and there is a clear downward trend in the data, which means the Ozone layer's thickness is depleting at a faster rate.
+In the following sections we will determine a model that fits the data best.
+
+# Task 1: Find the best fitting model among linear, cosine, cyclical, seasonal and seasonal. Also predict yearly change for the next five years i.e. 2017 - 2021
+
+## Linear Model
+### Testing a simple deterministic linear model:
+$$\mu = \beta_{0} + \beta_{1}t$$
+
+```{r Task_1-Testing_a_simple_deterministic_linear_model, echo=FALSE, message=FALSE, warning=FALSE, paged.print=TRUE}
+# Testing a simple determininstic linear model
+linear_model = lm(ts_delta_ozone~time(ts_delta_ozone))
+summary(linear_model)
+```
+
+#### Observations
+- $\beta_{1} = -0.11$ has a t-value of -13.34 which means that the slope is significant and there is a clear trend in the data. This means that the slope is not constant and the time series is *not stationary*.
+- This simple linear model has an adjusted *R-squared* value of 0.6655 which means *this model explains approximately 67% of variation in the change of thickness over the years*.
+
+#### Plot of fitted linear model
+
+```{r Plotting_the_linear_model}
+#plotting the fitted linear model
+plot(ts_delta_ozone, type = 'o',
+     main ="Simple Linear model for change in thickness of Ozone Layer",
+     ylab = "change in thickness of Ozone Layer",
+     xlab = "Year",
+     col = c("navy"))
+abline(linear_model, col = 'red')
+```
+Figure 2: Simple Linear model for change in thickness of Ozone Layer
+
+- We can clearly observe that although the linear model explains the downward trend of the change in thickness really well, but it does not do a good job of explaining the variation around this fitted line.
+
+#### Analyzing the residuals of the linear model
+
+```{r Analyzing_the_residuals_of_the_linear_model}
+# Distribution of residuals of linear_model
+res.linear_model = rstudent(linear_model)
+y = res.linear_model
+plot(y = y, x = as.vector(time(ts_delta_ozone)),
+     xlab = 'Year', ylab='Standardized Residuals',type='p',
+     main = "Residual of linear regression model for change in ozone thickness")
+abline(h=mean(y), col='red')
+```
+Figure 3: Residual of linear regression model for change in ozone thickness
+
+- At first glance the residuals seem to be spread quite well around the mean but at the very beginning and end there is some trend of points being below the mean line. A Q-Q plot will give a clearer picture if there's a trend and check of normality will also be done.
+
+#### Q-Q plot of residuals
+
+```{r Check_of_normality_of_the residuals }
+## Q-Q plot of the residuals for checking normality
+qqnorm(y, main = "Q-Q Plot of residuals to check normality") 
+qqline(y, col = 2, lwd = 2, lty = 3)
+```
+Figure 4: Q-Q Plot of residuals to check normality
+
+- There's a clear drift from the the normal line in the beginning and the end just like we anticipated from the residual plot in Figure 3. Will do a Shapiro-Wilk test for the confirmation of this observation.
+
+#### Conducting the Shapiro-Wilk test for checking normality
+
+```{r shapiro_test_linear_model, message=FALSE, warning=FALSE, paged.print=TRUE}
+#Shapiro test for normality
+shapiro.test(y)
+```
+
+- A *p-value > 0.05* confirms that the residuals are normal.
+
+#### Checking residual's ACF
+
+Plotting Auto-correlation of the residuals of linear model
+
+```{r acf_linear_model_residuals, message=FALSE, warning=FALSE, paged.print=TRUE}
+acf(y, main = "Autocorrelation plot of the residuals of linear model")
+```
+Figure 5: Autocorrelation plot of the residuals of linear model
+
+- It is clear from the plot that correlation at lag 1 is higher than the confidence band. This confirms that the fitted model does not give white noise as residual which indicates that there are other trends which can still be exploited for a better model.
+
+## Quadratic Model
+
+### Testing a simple deterministic quadratic model:
+$$\mu_{t} = \beta_{0} + \beta_{1}t + \beta_{2}t^2$$
+
+```{r fitting_quadratic_model}
+# Quadratic model
+t = time(ts_delta_ozone)
+t2 = t^2
+quad_model = lm(ts_delta_ozone ~ t + t2) # creating the quadratic model
+summary(quad_model) # looking at the significance of quadratic model
+```
+
+#### Observations
+
+- All coefficients are significant and the quadratic model also has an R-squared value of 0.7331 which means the *model explains approximately 73% of the variation in the change of thickness over the years*.
+
+#### Plot of fitted quadratic model
+
+```{r quadratic_curve_plot}
+#plotting the quadratic curve
+plot(
+  ts(fitted(quad_model), start = 1927),
+  ylab = 'Change in thickness of Ozone',
+  main = "Quadratic model for change in thickness of Ozone Layer",
+  ylim = c(-12, 3),
+  col = 'red'
+)
+#overlay the ozone layer data
+lines(ts_delta_ozone,type="o")
+```
+
+Figure 6: Quadratic model for change in thickness of Ozone Layer
+
+- The quadratic model looks a better fit than the linear model which is evident by the higher R-squared value.
+
+#### Analyzing the residuals of the quadratic model
+
+```{r residuals_quadratic_model}
+#residual analysis of quadratic model
+res.quad_model = rstudent(quad_model)
+plot(y = res.quad_model, x = as.vector(time(ts_delta_ozone)),
+     xlab = 'Year', ylab='Standardized Residuals',type='p',
+     main = "Residual of quadratic regression model for change in ozone thickness")
+abline(h=mean(y), col='red')
+```
+
+Figure 7: Residual of quadratic regression model for change in ozone thickness
+
+- The variance of the model looks constant with the mean at 0
+
+#### Q-Q plot of residuals
+
+```{r qq_plot_quadratic_model}
+# Q-Q plot to visualize normality of residuals
+y2 = res.quad_model
+qqnorm(y2, main = "Q-Q Plot of residuals of quadratic model") 
+qqline(y2, col = 2, lwd = 2, lty = 3)
+```
+
+Figure 8: Q-Q Plot of residuals of quadratic model
+
+- The Q-Q plot fits quite well there is still some drift around the ends but lesser than that of linear model in Figure 4. A shapiro-wilk test is needed for a final check of normality.
+
+```{r shapiro-wilk_quadratic_model}
+# Shapiro test for normality of residuals of Quadratic Model
+shapiro.test(y2)
+```
+
+- A p-value > 0.05 means we fail to reject $H_{0}$ that the residuals are normally distributed.
+
+#### Checking residual's ACF
+
+Plotting Auto-correlation of the residuals of quadratic model
+
+```{r acf_quadratic_model}
+acf(y2, main = "Autocorrelation plot of residuals of quadratic model")
+```
+
+Figure 9: Autocorrelation plot of residuals of quadratic model
+- There is still a significant correlation at lag 1, 3 and 4, indicating there's still some trend in the residuals.
+
+## Cyclic / Seasonal Model
+- Data is in years therefore there will be no seasonality.
+- We can check for cyclicity in the data to see if there are repeated patterns with cyclicity of 7 years.
+
+```{r cyclicity_in_the_data}
+
+#set the cycles frequencies
+f = 7
+ts_cycle =ts(ts_delta_ozone,frequency =f)
+
+ts_plot_cycle = plot(ts_cycle, type = 'l',
+                main ="Time series plot of change in thickness of Ozone layer\nin cycle of 7 years",
+                ylab = "Change in Ozone thickness",
+                xlab = "cycle = 7 years")
+cycle = factor(rep(1:f, length.out = length(ts_cycle)), ordered = TRUE)
+points(y=ts_cycle,x=time(ts_cycle), pch=as.character(cycle), col =2, cex = 1.15)
+```
+
+Figure 10: Time series plot of change in thickness of Ozone layer in cycle of 7 years
+
+- It does not look like there's any clear pattern to cyclicity in the data.
+- The trend also does not have a constant mean, therefore the data does not follow a cosine wave pattern.
+
+### Applying a cyclic harmonic model to the data
+
+```{r harmonic_model, message=FALSE, warning=FALSE, paged.print=TRUE}
+# Simple Harmoinic model
+har.<- harmonic(ts_cycle,1)
+harmonic_model =lm(ts_cycle~har.)
+summary(harmonic_model)
+```
+
+- The model has an R-squared value of 0.002453 which means the model only explains 0.2% of the variation in the data.
+- Also the p-values are not significant for both the harmoic terms.
+- Finally the p-value of the model is not significant enough (0.3344 > 0.05) therefore we can reject the simple cyclic model.
+
+### Applying a cyclic harmonic model with linear trend to the data
+
+```{r linear_harmonic_model}
+# Harmonic model with trend component
+linear_harmonic_model =lm(ts_cycle~t+har.)
+summary(linear_harmonic_model)
+```
+
+- Even though the intercept and *t* have a significant p value the coefficients of harmonic terms are not significant enough to be considered.
+
+#### Looking at model's residuals
+```{r linear_harmoinc_model_residuals}
+res.linear_harmonic_model = rstudent(linear_harmonic_model)
+shapiro.test(res.linear_harmonic_model)
+```
+
+- Although the shapiro wilk test fails to reject the $H_{0}$ that the data is not normally distributed but the model is not the best model. Therefore no need to plot the Q-Q plot and residual plot as it will not qualify as the best model anyways.
+
+## Prediction of yearly change for next five years (2017-2021) using quadratic model
+
+- Since quadtratic model gave the best performance among deterministic models. We will predict the change in thickness of Ozone layer using that model.
+
+```{r prediction, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+h=5 # 5 step ahead forecasting
+new_data = data.frame(t = seq((min(t)), (max(t)+h), 1))
+new_data$t2 = new_data$t^2
+#making the predictions
+pred1 = predict(quad_model, new_data, interval = "prediction") 
+
+#getting just the predictions for year 2017 - 2021
+pred1_table = data.frame(Year = seq(2017, 2021, 1),pred1[91:95,])
+colnames(pred1_table) = c("Year", "Prediction", "LowerCI", "UpperCI")
+pred1_table
+```
+
+#### Plotting the forecast for next five years
+```{r}
+#graphing it out
+plot(ts_delta_ozone, type = 'o',
+     main ="Forecasting 5 years ahead with quadratic model",
+     ylab = "Change in thickness of Ozone",
+     xlab = "Year",
+     xlim=c(1927,2021),
+     ylim = c(-15,4))
+lines(ts(as.vector(pred1[,1]), start = 1927), col="red", type="l") 
+lines(ts(as.vector(pred1[,2]), start = 1927), col="green", type="l") 
+lines(ts(as.vector(pred1[,3]), start = 1927), col="green", type="l")  
+legend("topright", lty=1, pch=1, col=c("black","green","red"), text.width
+       = 18, 
+       c("Data","5% forecast limits", "Forecasts"))
+
+```
+
+Figure 11: Forecasting 5 years ahead with quadratic model
