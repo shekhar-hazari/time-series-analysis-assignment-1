@@ -27,6 +27,7 @@ knitr::opts_chunk$set(
 library(readr)
 library(TSA)
 library(tseries)
+library(fUnitRoots)
 # Reading data
 delta_ozone <- read_csv("data1.csv", col_names = FALSE)
 # Renaming column
@@ -295,3 +296,154 @@ legend("topright", lty=1, pch=1, col=c("black","green","red"), text.width
 ```
 
 Figure 11: Forecasting 5 years ahead with quadratic model
+
+# Task 2: propose a set of possible ARIMA(p,d,q) models using all suitable model specification tools
+
+## Testing stationarity
+From the linear and quadratic regression in Task 1 we have already determined that there is clear downward trend in the data, and this also implies that we have non-stationarity in the data. There will be auto regressive behaviour in the data for which we'll do further plotting to reaffirm our assumption from initial plots.
+
+### ACF Plot
+
+```{r ACF_plot, message=FALSE, warning=FALSE, paged.print=TRUE}
+
+#plotting the the acf
+
+acf(ts_delta_ozone, ci.type = 'ma', main = "ACF of yearly change in Ozone thickness")
+
+```
+Figure 12: ACF of yearly change in Ozone thickness
+
+### PACF plot
+
+```{r pacf_plot, message=FALSE, warning=FALSE, paged.print=TRUE}
+#plotting the the pacf
+
+pacf(ts_delta_ozone, main = "PACF of yearly change in Ozone thickness")
+
+```
+
+Figure 13: PACF of yearly change in Ozone thickness
+
+#### Observation
+- Slow decay in ACF and high value at lag 1 with sharp drop after that in in PACF plot confirm our assumption of trend. The wave like pattern in the ACF plot also hints some existence of seasonality in the data.
+
+### ADF Test
+
+```{r ADF_test, message=FALSE, warning=FALSE, paged.print=TRUE}
+# Extracting lag
+ar(ts_delta_ozone)
+
+# Conducting ADF test
+adfTest(ts_delta_ozone, lags = 4, type = "nc", title = 'ADF Test: No constant nor time trend')
+adfTest(ts_delta_ozone, lags = 4, type = "c", title = 'ADF Test: constant no time trend')
+adfTest(ts_delta_ozone, lags = 4, type = "ct", title = 'ADF Test: constant and with time trend')
+```
+
+#### Observation
+- The AIC of the time series gives us $k=4$ as the best value to be used in the ADF test.
+- The p values of ADF for both *No constant nor time trend* and *constant no time trend* is greater than 0.1 if considering a 10% significance level for the test. Therefore, we fail to reject the $H_{0}$ that data is non-stationary.
+- In the case of *constant and with time trend* a p-value of 0.0867 implies that we can reject the $H_{0}$ that data is non-stationary at 10% significance but an importatnt thing to note here is that if a significance of 5% is used (the standard) we fail to reject the null hypothesis.
+- Since the results are not conclusive enough we can still assume that the data is non-stationary.
+
+## Analyzing change in variance
+
+From the initial plots of the time series (Figure 2) we can see that the variance in the data does not change significantly. But it is worthwhile to do a check whether this inference we made just by looking at the time series is true.
+
+```{r transformation, message=FALSE, warning=FALSE, paged.print=TRUE}
+# checking best lambda using Box_Cox transformation
+ts_transf <-  BoxCox.ar(ts_delta_ozone+13)
+title(main = "Log-likelihood versus the values of lambda after BoxCox transformation")
+```
+
+Figure 14: Log-likelihood versus the values of lambda after BoxCox transformation
+
+#### Observation
+Since the confidence interval of $\lambda$ includes the value 1 this suggests that power or log transformation is not required.
+
+## Applying Difference
+We have established that there is trend in the data as well as the fact that the variance is not changing at a significant amount to apply power or log transformation, therefore we take first difference of the data.
+
+```{r}
+# Plotting first difference
+ts_diff = diff(ts_delta_ozone)
+plot(ts_diff, type = 'o',
+     main ="First Difference of yearly changes in thickess of Ozone Layer",
+     ylab = "Change in thickess of Ozone Layer",
+     xlab = "Year")
+```
+Figure 15: First Difference of yearly changes in thickess of Ozone Layer
+
+#### Observation
+- We can see that first difference has removed the trend from the data.
+- To test if the trend factor has truely been removed, we'll perform ADF test again
+
+### ADF test on differenced data
+
+```{r ADF_differenced_data}
+#getting the lag to use in the ADF test
+ar(ts_diff)
+
+#conducting the adf test
+adfTest(ts_diff, lags = 6, type = "nc", title = 'ADF Test with No constant nor time trend')
+adfTest(ts_diff, lags = 6, type = "c", title = 'ADF Test with constant no time trend')
+adfTest(ts_diff, lags = 6, type = "ct", title = 'ADF Test with constant and with time trend')
+```
+
+#### Observation
+- Using $K=6$ for the ADF test on the differenced data
+- A significant p-value of (less than 0.05) for all three cases of ADF test imply that we can reject $H_{0}$ and confirm that the time series is stationary after applying first difference.
+
+### ACF and PACF of differenced data
+
+```{r ACF_differenced_data, message=FALSE, warning=FALSE, paged.print=TRUE}
+# Plotting ACF and PACF of differenced data
+acf(ts_diff, main = 'ACF of differenced data')
+```
+Figure 16: ACF of differenced data
+
+#### Observation
+- There a diminishing oscillating pattern in the ACF plot with significat values at lag 3, 7 and 10
+
+```{r PACF_differenced_data}
+pacf(ts_diff, main = 'PACF of differenced data')
+```
+
+Figure 17: PACF of differenced data
+
+#### Observation
+- Three values less than the lower bound of the significant PACF are present at lags 3, 4 and 6. But PACF at lag 3 is clearly very significant and can be used to model the data.
+
+## Possible Models
+
+- Since a dampened sine wave is present, there is a possibility of AR in the differenced data therefore an ARI(3,1) model can be picked because of significant values at lag 3 in PACF.
+- If we only pick significant lags from ACF and PACF then ARIMA(3,1,3) is a candidate model.
+- And finally, since all smaller models than the identified model can b picked, we can also include ARIMA(1,1,1), ARIMA(2,1,1), ARIMA(3,1,1), ARIMA(1,1,2), ARIMA(1,1,3), ARIMA(2,1,2), ARIMA(2,1,3), ARIMA(3,1,2) ARI(3,1), IMA(1,3) among the candidate models.
+
+## Using EACF to identify candidate models
+```{r EACF_for_candidate_models}
+#calculating the eacf
+eacf(ts_diff, ar.max = 10, ma.max = 6)
+```
+
+#### Observation
+- The top left vertex starts at $p = 0$ and $q = 3$ from there we can get an MA(1) model. Further surrounding models can also be cosidered as candidate models which are MA(4), ARMA(1,3), ARMA(1,4).
+
+## Using BIC to identfy potential models
+```{r BIC_for_identifying_candidate_models, message=TRUE, warning=FALSE, paged.print=TRUE}
+#creating the BIC plot
+res = armasubsets(ts_diff, nar = 9, nma = 9, y.name='ar', ar.method = 'ols')
+plot(res)
+title(main = "BIC table of differenced data", line = 6)
+```
+
+Figure 18: BIC table of differenced data
+#### Observation
+- The BIC table's shaded columns correspond to AR(7) and MA(6) therefore a model ARIMA(7,1,6) can also be included as potential model.
+
+# Conclusion
+- The best deterministic model from Task one was quadratic model for prediction of change in Ozone layer's thickness in years 2017-2021
+- Among stochastic models the following models have been identified as potential candidate models: ARIMA(3,1,3), ARIMA(1,1,1), ARIMA(2,1,1), ARIMA(3,1,1), ARIMA(1,1,2), ARIMA(1,1,3), ARIMA(2,1,2), ARIMA(2,1,3), ARIMA(3,1,2), ARI(3,1), IMA(1,3), MA(4), ARMA(1,3), ARMA(1,4) and ARIMA(7,1,6)
+- We can perform further tests to determine the best model out of candidate models, but that is beyond the scope of this assignment.
+
+# Bibliography
+Ritchie, Hannah, and Max Roser. 2020. “Ozone Layer.” Our World in Data.
